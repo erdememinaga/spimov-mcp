@@ -28,3 +28,12 @@ Sürüm artırırken: `pyproject.toml` bump → build → `twine upload`. **PyPI
 
 ## Rol
 `.claude/agents/mcp.md` — **mcpçi**. PyPI publish öncesi insana sorar.
+
+---
+
+## Dosya Haritası (AI için)
+- `src/spimov_mcp/server.py` — `build_server()` + 12 araç (`mcp_tools_definitions`). Tüm araçlar `https://spimov.com/api/v1/*` çağırır (`SPIMOV_API_BASE` ile değişir).
+- **Araçlar:** create_dub, get_job_status, list_jobs, download_video, get_subtitles, cancel_job, list_languages, get_quota, dub_youtube, upload_to_youtube, list_segments, update_segment, remix_video.
+- `stdio_main.py` — stdio transport, `SPIMOV_API_KEY` env (yerel dosya upload destekler).
+- `http_main.py` — HTTP/SSE, Bearer header / `?api_key=`, port 8001, `/sse`.
+- Sürüm: `src/spimov_mcp/__init__.py` + `pyproject.toml` (senkron tut). Yayın: `build_and_publish.py` (twine). **PyPI publish öncesi İNSANA SOR.**
