@@ -8,3 +8,8 @@ build/
 .env
 *.env.secret
 *.mp4
+
+# Internal dev/AI docs — not for the public package
+CLAUDE.md
+.claude/
+.smoke-venv/
