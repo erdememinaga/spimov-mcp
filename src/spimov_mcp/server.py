@@ -26,13 +26,22 @@ def _client(api_key: str) -> httpx.AsyncClient:
     )
 
 
-def mcp_tools_definitions() -> list[Tool]:
+# Tools that only make sense over stdio: they read/write the client's local
+# filesystem, so their path arguments are meaningless on a hosted transport.
+# (Over HTTP, use get_download_url instead of download_video.)
+LOCAL_ONLY_TOOLS = frozenset({"create_dub", "download_video"})
+
+
+def mcp_tools_definitions(include_local: bool = True) -> list[Tool]:
     """The full list of MCP tools the Spimov server exposes.
 
     Module-level so the REST docs endpoint (/api/mcp/manifest.json) can dump
     the same definitions without spinning up an MCP server instance.
+
+    `include_local=False` drops filesystem-bound tools (create_dub) — used by
+    the hosted HTTP transport, where a local file_path can't be honored.
     """
-    return [
+    tools = [
             Tool(
                 name="create_dub",
                 description=(
@@ -91,6 +100,19 @@ def mcp_tools_definitions() -> list[Tool]:
                         "job_id": {"type": "string"},
                         "save_to": {"type": "string", "description": "Local file path to write the MP4 to."},
                     },
+                },
+            ),
+            Tool(
+                name="get_download_url",
+                description=(
+                    "Get a shareable, time-limited URL to download the finished dubbed MP4 "
+                    "in a browser. Use this over HTTP/web (where download_video can't save to "
+                    "your machine). The link works without an API key and expires."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["job_id"],
+                    "properties": {"job_id": {"type": "string"}},
                 },
             ),
             Tool(
@@ -239,18 +261,30 @@ def mcp_tools_definitions() -> list[Tool]:
                 },
             ),
         ]
+    if not include_local:
+        tools = [t for t in tools if t.name not in LOCAL_ONLY_TOOLS]
+    return tools
 
 
-def build_server(get_api_key) -> Server:
-    """Build the Server. `get_api_key()` returns the active key (env or header)."""
+def build_server(get_api_key, include_local: bool = True) -> Server:
+    """Build the Server. `get_api_key()` returns the active key (env or header).
+
+    `include_local=False` hides (and refuses) filesystem-bound tools — set this
+    on the hosted HTTP transport.
+    """
     server = Server("spimov-mcp")
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
-        return mcp_tools_definitions()
+        return mcp_tools_definitions(include_local=include_local)
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+        if not include_local and name in LOCAL_ONLY_TOOLS:
+            return [TextContent(type="text", text=json.dumps(
+                {"error": "local_only_tool", "tool": name,
+                 "hint": "This tool needs local filesystem access; use the stdio transport (pip install spimov-mcp)."}
+            ))]
         api_key = get_api_key()
         if not api_key and name != "list_languages":
             return [TextContent(type="text", text=json.dumps(
@@ -268,6 +302,9 @@ def build_server(get_api_key) -> Server:
                     return _wrap(r)
                 if name == "download_video":
                     return await _download_video(http, arguments)
+                if name == "get_download_url":
+                    r = await http.get(f"/videos/{arguments['job_id']}/download-url")
+                    return _wrap(r)
                 if name == "get_subtitles":
                     r = await http.get(
                         f"/videos/{arguments['job_id']}/subtitles",

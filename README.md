@@ -3,8 +3,8 @@
 MCP server for Spimov — dub videos via Claude Desktop / Claude Code / any MCP client.
 
 Two transports:
-- **stdio** — runs locally, spawned by your MCP client, authenticated with `SPIMOV_API_KEY` env var.
-- **HTTP/SSE** — long-lived server (we host at `mcp.spimov.com`), authenticated per-request with `Authorization: Bearer spk_live_...`.
+- **stdio** — runs locally, spawned by your MCP client, authenticated with `SPIMOV_API_KEY` env var. Supports local file upload (`create_dub`).
+- **HTTP** — long-lived server (we host at `mcp.spimov.com`), authenticated per-request with `Authorization: Bearer spk_live_...` (or `?api_key=`). Exposes both Streamable HTTP (`/mcp`, current spec) and legacy SSE (`/sse`). URL-only — no local file upload.
 
 Both transports are thin wrappers over the public REST API at `https://spimov.com/api/v1`. The same API key, the same daily request quota.
 
@@ -39,15 +39,19 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 
 Restart Claude Desktop. The "spimov" MCP server should appear; ask Claude to "dub /Users/me/Movies/clip.mp4 into Turkish using Spimov".
 
-## 2b. Use via HTTP/SSE (Claude Code / web clients)
+## 2b. Use via HTTP (Claude Code / Claude web / other clients)
 
-Hosted endpoint: `https://mcp.spimov.com/sse`. Self-hosted: `MCP_PORT=8001 spimov-mcp-http`.
+Self-hosted: `MCP_PORT=8001 spimov-mcp-http`. Hosted endpoints:
+- Streamable HTTP (recommended): `https://mcp.spimov.com/mcp`
+- Legacy SSE: `https://mcp.spimov.com/sse`
+
+**Claude Code / config-file clients** (header auth):
 
 ```json
 {
   "mcpServers": {
     "spimov": {
-      "url": "https://mcp.spimov.com/sse",
+      "url": "https://mcp.spimov.com/mcp",
       "headers": {
         "Authorization": "Bearer spk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
       }
@@ -55,6 +59,19 @@ Hosted endpoint: `https://mcp.spimov.com/sse`. Self-hosted: `MCP_PORT=8001 spimo
   }
 }
 ```
+
+**Claude web** (claude.ai → Settings → Connectors → *Add custom connector*): the
+UI only takes a URL, so put the key in the query string:
+
+```
+https://mcp.spimov.com/mcp?api_key=spk_live_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+> The key travels in the URL (stored in your connector config). Treat it like a
+> password and rotate it from **Settings → API keys** if it leaks. Local file
+> tools (`create_dub`, `download_video`) are unavailable here — use `dub_youtube`
+> to dub, and `get_download_url` to get a clickable browser download link for the
+> finished MP4.
 
 ## 3. Tools
 
@@ -67,7 +84,8 @@ Hosted endpoint: `https://mcp.spimov.com/sse`. Self-hosted: `MCP_PORT=8001 spimo
 | `list_segments` | Transcript segments (text, speaker, emotion, timing) of a job. |
 | `update_segment` | Edit one segment's text/emotion/speaker/skip and resynth. |
 | `remix_video` | Re-render audio mix / subtitles / lipsync without re-dubbing. |
-| `download_video` | Save the finished MP4 locally. |
+| `download_video` | Save the finished MP4 locally (**stdio only**). |
+| `get_download_url` | Get a shareable, time-limited browser download link for the MP4 (use this over HTTP/web). |
 | `get_subtitles` | Fetch SRT/VTT (any embedded language). |
 | `upload_to_youtube` | Publish (or retry) a finished job to a connected channel. |
 | `cancel_job` | Cancel/delete. |
